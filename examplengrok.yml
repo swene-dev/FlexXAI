@@ -1,0 +1,13 @@
+version: "2"
+authtoken: ngrok_auth_token
+
+tunnels:
+  agent-a:
+    addr: 7378
+    proto: http
+    inspect: true
+    
+  agent-b:
+    addr: 7379
+    proto: http
+    inspect: true 

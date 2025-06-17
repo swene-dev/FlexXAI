@@ -1,0 +1,58 @@
+{
+  "name": "openserv-sdk-intro",
+  "version": "1.0.0",
+  "description": "Comprehensive introduction and testing suite for OpenServ TypeScript SDK",
+  "main": "openserv-sdk-comprehensive-example.ts",
+  "scripts": {
+    "start": "ts-node openserv-sdk-comprehensive-example.ts",
+    "test": "npm run test:capabilities && npm run test:tasks && npm run test:chat",
+    "test:capabilities": "ts-node -e \"import('./openserv-sdk-comprehensive-example').then(m => m.testBasicCapabilities())\"",
+    "test:tasks": "ts-node -e \"import('./openserv-sdk-comprehensive-example').then(m => m.demonstrateTaskManagement())\"",
+    "test:chat": "ts-node -e \"import('./openserv-sdk-comprehensive-example').then(m => m.demonstrateChatCommunication())\"",
+    "test:files": "ts-node -e \"import('./openserv-sdk-comprehensive-example').then(m => m.demonstrateFileOperations())\"",
+    "test:integrations": "ts-node -e \"import('./openserv-sdk-comprehensive-example').then(m => m.demonstrateIntegrationManagement())\"",
+    "test:advanced": "ts-node -e \"import('./openserv-sdk-comprehensive-example').then(m => m.demonstrateAdvancedFeatures())\"",
+    "test:all": "ts-node -e \"import('./openserv-sdk-comprehensive-example').then(m => m.runComprehensiveTests())\"",
+    "dev": "ts-node --watch openserv-sdk-comprehensive-example.ts",
+    "build": "tsc",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier --write ."
+  },
+  "keywords": [
+    "openserv",
+    "ai",
+    "agent",
+    "typescript",
+    "sdk",
+    "framework",
+    "autonomous",
+    "cognitive"
+  ],
+  "author": "OpenServ Labs",
+  "license": "MIT",
+  "dependencies": {
+    "@openserv-labs/sdk": "latest",
+    "dotenv": "^16.5.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.54.0",
+    "prettier": "^3.1.0",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/openserv-labs/openserv-sdk-intro.git"
+  },
+  "bugs": {
+    "url": "https://github.com/openserv-labs/openserv-sdk-intro/issues"
+  },
+  "homepage": "https://github.com/openserv-labs/openserv-sdk-intro#readme"
+}
