@@ -31,12 +31,20 @@
   "author": "OpenServ Labs",
   "license": "MIT",
   "dependencies": {
-    "@openserv-labs/sdk": "latest",
+    "@openserv-labs/sdk": "^1.6.0",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "date-fns": "^4.1.0",
     "dotenv": "^16.5.0",
+    "lucide-react": "^0.516.0",
+    "node-telegram-bot-api": "^0.66.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
+    "@types/node-telegram-bot-api": "^0.64.9",
     "@typescript-eslint/eslint-plugin": "^6.13.0",
     "@typescript-eslint/parser": "^6.13.0",
     "eslint": "^8.54.0",
