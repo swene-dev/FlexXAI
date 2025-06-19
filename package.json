@@ -4,7 +4,8 @@
   "description": "Comprehensive introduction and testing suite for OpenServ TypeScript SDK",
   "main": "leaderboard-boosted.ts",
   "scripts": {
-    "start": "ts-node leaderboard-boosted.ts",
+    "build": "echo 'No build needed'",
+    "start": "npx ts-node leaderboard-boosted.ts",
     "test": "npm run test:capabilities && npm run test:tasks && npm run test:chat",
     "test:capabilities": "ts-node -e \"import('./leaderboard-boosted').then(m => m.testBasicCapabilities())\"",
     "test:tasks": "ts-node -e \"import('./leaderboard-boosted').then(m => m.demonstrateTaskManagement())\"",
@@ -14,7 +15,6 @@
     "test:advanced": "ts-node -e \"import('./leaderboard-boosted').then(m => m.demonstrateAdvancedFeatures())\"",
     "test:all": "ts-node -e \"import('./leaderboard-boosted').then(m => m.runComprehensiveTests())\"",
     "dev": "ts-node --watch leaderboard-boosted.ts",
-    "build": "tsc",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write ."
   },
