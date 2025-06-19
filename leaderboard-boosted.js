@@ -52,8 +52,8 @@ exports.sendLeaderboardToTelegram = sendLeaderboardToTelegram;
 var sdk_1 = require("@openserv-labs/sdk");
 var node_telegram_bot_api_1 = require("node-telegram-bot-api");
 var date_fns_1 = require("date-fns");
-var fs_1 = require("fs");
-var path_1 = require("path");
+var fs = require("fs");
+var path = require("path");
 require("dotenv/config");
 var CONFIG = {
     OPENSERV_API_KEY: process.env.OPENSERV_API_KEY || '',
@@ -69,8 +69,8 @@ if (!CONFIG.OPENSERV_API_KEY || !CONFIG.WORKSPACE_ID || !CONFIG.TELEGRAM_BOT_TOK
     process.exit(1);
 }
 // Create data directory if it doesn't exist
-if (!fs_1.default.existsSync(CONFIG.DATA_DIR)) {
-    fs_1.default.mkdirSync(CONFIG.DATA_DIR, { recursive: true });
+if (!fs.existsSync(CONFIG.DATA_DIR)) {
+    fs.mkdirSync(CONFIG.DATA_DIR, { recursive: true });
 }
 var twitterAgent = new sdk_1.Agent({
     systemPrompt: 'You are a Twitter integration agent for fetching OpenServ mentions and building community leaderboards.',
@@ -90,12 +90,12 @@ function isValidTweet(tweet) {
 }
 var DataStorage = /** @class */ (function () {
     function DataStorage() {
-        this.filePath = path_1.default.join(CONFIG.DATA_DIR, 'leaderboard_data.json');
+        this.filePath = path.join(CONFIG.DATA_DIR, 'leaderboard_data.json');
     }
     DataStorage.prototype.load = function () {
         try {
-            if (fs_1.default.existsSync(this.filePath)) {
-                var data = JSON.parse(fs_1.default.readFileSync(this.filePath, 'utf-8'));
+            if (fs.existsSync(this.filePath)) {
+                var data = JSON.parse(fs.readFileSync(this.filePath, 'utf-8'));
                 return data;
             }
         }
@@ -106,7 +106,7 @@ var DataStorage = /** @class */ (function () {
     };
     DataStorage.prototype.save = function (data) {
         try {
-            fs_1.default.writeFileSync(this.filePath, JSON.stringify(data, null, 2));
+            fs.writeFileSync(this.filePath, JSON.stringify(data, null, 2));
         }
         catch (error) {
             console.error('Error saving data:', error);
