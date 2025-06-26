@@ -1,15 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Trophy, TrendingUp, Users, MessageCircle, Heart, Repeat2, ExternalLink, Calendar, BarChart3, Award, Flame } from 'lucide-react';
 
-// Extend Window interface for file system API
-declare global {
-  interface Window {
-    fs?: {
-      readFile: (path: string, options?: { encoding?: string }) => Promise<string>;
-    };
-  }
-}
-
 // Interfaces
 interface Tweet {
   id: string;
@@ -45,11 +36,6 @@ interface StorageData {
   leaderboards: LeaderboardData[];
 }
 
-// Use the same config as your bot
-const CONFIG = {
-  DATA_DIR: './data',
-};
-
 const LeaderboardDashboard = () => {
   const [data, setData] = useState<StorageData>({
     tweets: [],
@@ -67,15 +53,11 @@ const LeaderboardDashboard = () => {
     setLoading(true);
     setError(null);
     try {
-      const filePath = `${CONFIG.DATA_DIR}/leaderboard_data.json`;
-      
-      // Check if file system API is available
-      if (!window.fs || typeof window.fs.readFile !== 'function') {
-        throw new Error('File system not available. Please ensure leaderboard_data.json is uploaded to this conversation.');
+      const response = await fetch('/api/leaderboard-data');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
-
-      const fileData = await window.fs.readFile(filePath, { encoding: 'utf8' });
-      const parsedData: StorageData = JSON.parse(fileData);
+      const parsedData: StorageData = await response.json();
       setData(parsedData);
       console.log(`✅ Loaded ${parsedData.leaderboards.length} leaderboards and ${parsedData.tweets.length} tweets`);
     } catch (err) {
@@ -85,6 +67,13 @@ const LeaderboardDashboard = () => {
       setLoading(false);
     }
   };
+
+  // Auto-refresh data every 5 minutes
+  useEffect(() => {
+    loadLeaderboardData();
+    const interval = setInterval(loadLeaderboardData, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const formatDate = (dateString: string): string => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -316,6 +305,11 @@ const LeaderboardDashboard = () => {
             <TrendingUp className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             <span>{loading ? 'Refreshing...' : 'Refresh Data'}</span>
           </button>
+        </div>
+
+        {/* Auto-refresh indicator */}
+        <div className="text-center text-sm text-gray-500 mb-6">
+          Auto-refreshes every 5 minutes
         </div>
 
         {/* Content */}

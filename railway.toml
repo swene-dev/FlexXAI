@@ -1,0 +1,10 @@
+# railway.toml for your bot service
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "npm start"
+
+[[volumes]]
+name = "leaderboard-data"
+mountPath = "/app/data"

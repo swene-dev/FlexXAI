@@ -4,6 +4,9 @@ import { subDays, subMinutes } from 'date-fns';
 import fs from 'fs';
 import path from 'path';
 import 'dotenv/config';
+// For TypeScript + node-fetch v2 compatibility
+// @ts-ignore
+import fetch from 'node-fetch';
 
 // Type definitions
 interface Tweet {
@@ -89,47 +92,32 @@ function isValidTweet(tweet: any): tweet is Tweet {
          tweet.username !== '';
 }
 
-class DataStorage {
-  private filePath: string;
+const API_BASE_URL = process.env.LEADERBOARD_API_URL || 'http://localhost:3000/api';
 
-  constructor() {
-    this.filePath = path.join(CONFIG.DATA_DIR, 'leaderboard_data.json');
-  }
-
-  load(): StorageData {
-    try {
-      if (fs.existsSync(this.filePath)) {
-        const data = JSON.parse(fs.readFileSync(this.filePath, 'utf-8'));
-        return data as StorageData;
-      }
-    } catch (error) {
-      console.error('Error loading data:', error);
-    }
-    return { tweets: [], lastFetch: new Date(0).toISOString(), leaderboards: [] };
-  }
-
-  save(data: StorageData): void {
-    try {
-      fs.writeFileSync(this.filePath, JSON.stringify(data, null, 2));
-    } catch (error) {
-      console.error('Error saving data:', error);
-    }
-  }
-
-  getWeeklyTweets(weekOffset: number = 0): Tweet[] {
-    const data = this.load();
-    const now = new Date();
-    const weekStart = subDays(now, 7 + (weekOffset * 7));
-    const weekEnd = subDays(now, weekOffset * 7);
-    
-    return data.tweets.filter(tweet => {
-      const tweetDate = new Date(tweet.created_at);
-      return tweetDate >= weekStart && tweetDate < weekEnd;
-    });
-  }
+// Helper functions to call the API
+async function getLeaderboard() {
+  const res = await fetch(`${API_BASE_URL}/leaderboard`);
+  const json = await res.json();
+  return json.data;
 }
 
-const storage = new DataStorage();
+async function getUserStats(username: string) {
+  const res = await fetch(`${API_BASE_URL}/user/${encodeURIComponent(username)}`);
+  const json = await res.json();
+  return json.data;
+}
+
+async function getAnalytics() {
+  const res = await fetch(`${API_BASE_URL}/analytics`);
+  const json = await res.json();
+  return json.data;
+}
+
+async function triggerFetch() {
+  const res = await fetch(`${API_BASE_URL}/fetch`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'historical' }) });
+  const json = await res.json();
+  return json.data;
+}
 
 function safeNumber(value: any, defaultValue: number = 0): number {
   if (value === null || value === undefined) return defaultValue;
@@ -202,235 +190,6 @@ async function fetchTwitterMentions(startTime: string, endTime: string, maxResul
   }
 }
 
-async function fetchAllMentionsHistorical(): Promise<void> {
-  console.log('🔄 Running fetchAllMentionsHistorical...');
-  
-  const now = new Date();
-  const sevenDaysAgo = subDays(now, 7);
-  const startTime = sevenDaysAgo.toISOString();
-  const endTime = new Date(now.getTime() - 30 * 1000).toISOString();
-
-  const tweets = await fetchTwitterMentions(startTime, endTime);
-  const data = storage.load();
-  const existingIds = new Set(data.tweets.map(t => t.id));
-  const newTweets = tweets.filter(t => !existingIds.has(t.id));
-  
-  data.tweets.push(...newTweets);
-  data.lastFetch = new Date().toISOString();
-  storage.save(data);
-  console.log(`✅ Fetched ${newTweets.length} new tweets`);
-  
-  if (newTweets.length > 0) {
-    console.log('📊 Auto-generating leaderboard...');
-    await scoreAndStore();
-  }
-}
-
-async function fetchLatestMentionsLive(): Promise<void> {
-  console.log('🔄 Running fetchLatestMentionsLive...');
-  
-  const data = storage.load();
-  const lastFetch = new Date(data.lastFetch);
-  const now = new Date();
-  const thirtyMinutesAgo = subMinutes(now, 30);
-  
-  const startTime = lastFetch > thirtyMinutesAgo ? lastFetch.toISOString() : thirtyMinutesAgo.toISOString();
-  const endTime = new Date(now.getTime() - 30 * 1000).toISOString();
-
-  const tweets = await fetchTwitterMentions(startTime, endTime, 50);
-  const existingIds = new Set(data.tweets.map(t => t.id));
-  const newTweets = tweets.filter(t => !existingIds.has(t.id));
-  
-  data.tweets.push(...newTweets);
-  data.lastFetch = new Date().toISOString();
-  storage.save(data);
-  console.log(`✅ Live fetch: ${newTweets.length} new tweets`);
-  
-  if (newTweets.length > 0) await scoreAndStore();
-}
-
-function calculateUserScore(userTweets: Tweet[], previousWeekUsers: string[]): number {
-  const sortedTweets = [...userTweets].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  let totalScore = 0;
-  const username = userTweets[0]?.username;
-
-  for (let i = 0; i < sortedTweets.length; i++) {
-    const tweet = sortedTweets[i];
-    if (!tweet) continue;
-
-    const impactScore = (tweet.follower_count * 0.001) + tweet.likes + (tweet.retweets * 2);
-    const freshnessMultiplier = i === 0 ? 3 : i === 1 ? 2 : 1;
-    const decayFactor = i === 0 ? 1 : i === 1 ? 0.5 : 0.25;
-    
-    totalScore += impactScore * freshnessMultiplier * decayFactor;
-  }
-
-  const consistencyMultiplier = username && previousWeekUsers.includes(username) ? 1.25 : 1;
-  return totalScore * consistencyMultiplier;
-}
-
-async function scoreAndStore(): Promise<void> {
-  console.log('📊 Running scoreAndStore...');
-  
-  const currentWeekTweets = storage.getWeeklyTweets(0);
-  const previousWeekTweets = storage.getWeeklyTweets(1);
-  
-  if (currentWeekTweets.length === 0) {
-    console.log('No tweets found for current week');
-    return;
-  }
-
-  const tweetsByUser: Record<string, Tweet[]> = {};
-  
-  // Filter valid tweets and group by user
-  currentWeekTweets
-    .filter(isValidTweet)
-    .forEach(tweet => {
-      if (!tweetsByUser[tweet.username]) {
-        tweetsByUser[tweet.username] = [];
-      }
-      tweetsByUser[tweet.username]!.push(tweet);
-    });
-
-  const previousWeekUsers = [...new Set(previousWeekTweets.map(t => t.username))];
-
-  const userStats: UserStats[] = Object.entries(tweetsByUser)
-    .map(([username, tweets]) => {
-      if (!tweets || tweets.length === 0) return null;
-      
-      const score = calculateUserScore(tweets, previousWeekUsers);
-      const avgLikes = tweets.reduce((sum, t) => sum + t.likes, 0) / tweets.length;
-      const avgRetweets = tweets.reduce((sum, t) => sum + t.retweets, 0) / tweets.length;
-      const topTweet = tweets.reduce((best, current) => 
-        (current.likes + current.retweets * 2) > (best.likes + best.retweets * 2) ? current : best
-      );
-
-      return {
-        username,
-        totalScore: score,
-        tweetCount: tweets.length,
-        avgLikes,
-        avgRetweets,
-        topTweet,
-        lastActive: tweets[0]?.created_at || new Date().toISOString()
-      };
-    })
-    .filter((stat): stat is UserStats => stat !== null && stat.totalScore > 0);
-
-  userStats.sort((a, b) => b.totalScore - a.totalScore);
-
-  let mostViralTweet: Tweet;
-  if (currentWeekTweets.length > 0) {
-    mostViralTweet = currentWeekTweets.reduce((best, current) => 
-      (current.likes + current.retweets * 2) > (best.likes + best.retweets * 2) ? current : best
-    );
-  } else {
-    mostViralTweet = {
-      id: 'dummy', 
-      username: 'none', 
-      follower_count: 0, 
-      created_at: new Date().toISOString(),
-      likes: 0, 
-      retweets: 0, 
-      text: 'No tweets this week', 
-      url: ''
-    };
-  }
-
-  const leaderboardData: LeaderboardData = {
-    week: getWeekKey(),
-    users: userStats,
-    totalTweets: currentWeekTweets.length,
-    mostViralTweet
-  };
-
-  const data = storage.load();
-  const existingIndex = data.leaderboards.findIndex(lb => lb.week === leaderboardData.week);
-  if (existingIndex >= 0) {
-    data.leaderboards[existingIndex] = leaderboardData;
-  } else {
-    data.leaderboards.push(leaderboardData);
-  }
-  
-  data.leaderboards = data.leaderboards.slice(-8); // Keep last 8 weeks
-  storage.save(data);
-  console.log(`✅ Scored ${userStats.length} users for week ${getWeekKey()}`);
-}
-
-async function generateSimpleLeaderboard(): Promise<void> {
-  console.log('📊 Generating simple leaderboard...');
-  
-  const now = new Date();
-  const sevenDaysAgo = subDays(now, 7);
-  const tweets = await fetchTwitterMentions(sevenDaysAgo.toISOString(), new Date(now.getTime() - 30 * 1000).toISOString());
-  
-  if (tweets.length === 0) {
-    await telegramBot.sendMessage(CONFIG.TELEGRAM_CHAT_ID, '🏆 Weekly OpenServ Leaderboard\n\nNo OpenServ mentions found this week!');
-    return;
-  }
-
-  const tweetsByUser: Record<string, Tweet[]> = {};
-  
-  tweets
-    .filter(isValidTweet)
-    .forEach(tweet => {
-      if (!tweetsByUser[tweet.username]) {
-        tweetsByUser[tweet.username] = [];
-      }
-      tweetsByUser[tweet.username]!.push(tweet);
-    });
-
-  const userScores: Record<string, number> = {};
-  Object.entries(tweetsByUser).forEach(([username, userTweets]) => {
-    if (!userTweets || userTweets.length === 0) return;
-    
-    let totalScore = 0;
-    userTweets.forEach((tweet, index) => {
-      const impactScore = (tweet.follower_count * 0.001) + tweet.likes + (tweet.retweets * 2);
-      const freshnessMultiplier = index === 0 ? 3 : index === 1 ? 2 : 1;
-      const decayFactor = index === 0 ? 1 : index === 1 ? 0.5 : 0.25;
-      totalScore += impactScore * freshnessMultiplier * decayFactor;
-    });
-    
-    userScores[username] = totalScore;
-  });
-
-  const leaderboard = Object.entries(userScores)
-    .filter(([_, score]) => !isNaN(score) && score > 0)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
-    .map(([username, score], index) => `#${index + 1} @${username} — ${score.toFixed(1)} pts`)
-    .join('\n');
-
-  const message = leaderboard ? `🏆 Weekly OpenServ Leaderboard\n\n${leaderboard}` : '🏆 Weekly OpenServ Leaderboard\n\nNo valid scores found this week!';
-  await telegramBot.sendMessage(CONFIG.TELEGRAM_CHAT_ID, message);
-  console.log('✅ Simple leaderboard posted to Telegram!');
-}
-
-async function sendLeaderboardToTelegram(): Promise<void> {
-  console.log('📱 Sending weekly leaderboard to Telegram...');
-  
-  const data = storage.load();
-  const currentWeek = getWeekKey();
-  const leaderboard = data.leaderboards.find(lb => lb.week === currentWeek);
-  
-  if (!leaderboard || leaderboard.users.length === 0) {
-    console.log('No leaderboard data found, generating simple leaderboard...');
-    await generateSimpleLeaderboard();
-    return;
-  }
-
-  const top10 = leaderboard.users.slice(0, 10);
-  const leaderboardText = top10.map((user, index) => `#${index + 1} @${user.username} — ${user.totalScore.toFixed(1)} pts`).join('\n');
-  const viralText = leaderboard.mostViralTweet.username !== 'none' 
-    ? `\n\n🔥 Most Viral: @${leaderboard.mostViralTweet.username} (${leaderboard.mostViralTweet.likes + leaderboard.mostViralTweet.retweets * 2} engagement)`
-    : '';
-
-  const message = `🏆 Weekly OpenServ Leaderboard\n\n${leaderboardText}${viralText}\n\nKeep tweeting about OpenServ to climb the board! 🚀`;
-  await telegramBot.sendMessage(CONFIG.TELEGRAM_CHAT_ID, message);
-  console.log('✅ Leaderboard posted to Telegram!');
-}
-
 // Error handlers
 telegramBot.on('error', (error: Error) => console.error('❌ Telegram bot error:', error));
 telegramBot.on('polling_error', (error: Error) => console.error('❌ Telegram polling error:', error));
@@ -484,8 +243,7 @@ Need help? Contact the OpenServ team!`;
 telegramBot.onText(/\/fetch/, async (msg) => {
   try {
     await telegramBot.sendMessage(msg.chat.id, '🔄 Fetching latest tweets and generating leaderboard...');
-    await fetchAllMentionsHistorical();
-    await scoreAndStore();
+    await triggerFetch();
     await telegramBot.sendMessage(msg.chat.id, '✅ Fetch completed! Use /leaderboard to see results.');
   } catch (error) {
     console.error('Error in /fetch command:', error);
@@ -500,33 +258,13 @@ telegramBot.onText(/\/myxp(?:\s+@?(\w+))?/, async (msg, match) => {
       await telegramBot.sendMessage(msg.chat.id, '📝 Usage: /myxp @username\nExample: /myxp satoshi_dev');
       return;
     }
-
-    const data = storage.load();
-    const leaderboard = data.leaderboards.find(lb => lb.week === getWeekKey());
-    
-    if (!leaderboard) {
-      await telegramBot.sendMessage(msg.chat.id, '📊 No leaderboard data available. Try /fetch first.');
-      return;
-    }
-
-    const userStats = leaderboard.users.find(u => u.username.toLowerCase() === requestedUser.toLowerCase());
-    
+    const userStats = await getUserStats(requestedUser);
     if (!userStats) {
       await telegramBot.sendMessage(msg.chat.id, `🔍 @${requestedUser} hasn't posted about OpenServ this week.`);
       return;
     }
-
-    const rank = leaderboard.users.findIndex(u => u.username.toLowerCase() === requestedUser.toLowerCase()) + 1;
-    
     const message = `📊 Stats for @${userStats.username}:
-    
-🏆 Rank: #${rank}
-⭐ Score: ${userStats.totalScore.toFixed(1)} pts
-📝 Tweets: ${userStats.tweetCount}
-❤️ Avg Likes: ${userStats.avgLikes.toFixed(1)}
-🔄 Avg Retweets: ${userStats.avgRetweets.toFixed(1)}
-🔥 Top Tweet: ${userStats.topTweet.likes + userStats.topTweet.retweets * 2} engagement`;
-
+\n🏆 Rank: #${userStats.rank}\n⭐ Score: ${userStats.totalScore.toFixed(1)} pts\n📝 Tweets: ${userStats.tweetCount}\n❤️ Avg Likes: ${userStats.avgLikes.toFixed(1)}\n🔄 Avg Retweets: ${userStats.avgRetweets.toFixed(1)}\n🔥 Top Tweet: ${userStats.topTweet.likes + userStats.topTweet.retweets * 2} engagement`;
     await telegramBot.sendMessage(msg.chat.id, message);
   } catch (error) {
     console.error('Error in /myxp command:', error);
@@ -536,18 +274,14 @@ telegramBot.onText(/\/myxp(?:\s+@?(\w+))?/, async (msg, match) => {
 
 telegramBot.onText(/\/leaderboard/, async (msg) => {
   try {
-    const data = storage.load();
-    const leaderboard = data.leaderboards.find(lb => lb.week === getWeekKey());
-    
+    const leaderboard = await getLeaderboard();
     if (!leaderboard || leaderboard.users.length === 0) {
-      await telegramBot.sendMessage(msg.chat.id, '🔄 No leaderboard data found. Generating fresh leaderboard...');
-      await generateSimpleLeaderboard();
+      await telegramBot.sendMessage(msg.chat.id, '🔄 No leaderboard data found.');
       return;
     }
-
     const top10 = leaderboard.users.slice(0, 10);
-    const leaderboardText = top10.map((user, index) => `#${index + 1} @${user.username} — ${user.totalScore.toFixed(1)} pts`).join('\n');
-    const message = `🏆 Current Weekly Leaderboard\n\n${leaderboardText}\n\n📅 Week: ${getWeekKey()}`;
+    const leaderboardText = top10.map((user: any, index: number) => `#${index + 1} @${user.username} — ${user.totalScore.toFixed(1)} pts`).join('\n');
+    const message = `🏆 Current Weekly Leaderboard\n\n${leaderboardText}\n\n📅 Week: ${leaderboard.week}`;
     await telegramBot.sendMessage(msg.chat.id, message);
   } catch (error) {
     console.error('Error in /leaderboard command:', error);
@@ -557,39 +291,13 @@ telegramBot.onText(/\/leaderboard/, async (msg) => {
 
 telegramBot.onText(/\/analytics/, async (msg) => {
   try {
-    const data = storage.load();
-    const leaderboard = data.leaderboards.find(lb => lb.week === getWeekKey());
-    
-    if (!leaderboard) {
+    const analytics = await getAnalytics();
+    if (!analytics) {
       await telegramBot.sendMessage(msg.chat.id, '📈 No analytics data available. Try /fetch first.');
       return;
     }
-
-    const totalUsers = leaderboard.users.length;
-    const avgScore = totalUsers > 0 ? leaderboard.users.reduce((sum, u) => sum + u.totalScore, 0) / totalUsers : 0;
-
-    const prevWeek = data.leaderboards.find(lb => lb.week !== getWeekKey());
-    let fastestRiser = 'N/A';
-    if (prevWeek) {
-      for (const user of leaderboard.users.slice(0, 5)) {
-        const prevRank = prevWeek.users.findIndex(u => u.username === user.username);
-        const currentRank = leaderboard.users.findIndex(u => u.username === user.username);
-        if (prevRank > currentRank && prevRank >= 0) {
-          fastestRiser = `@${user.username} (↑${prevRank - currentRank})`;
-          break;
-        }
-      }
-    }
-
     const message = `📈 Weekly Analytics:
-
-👥 Active Users: ${totalUsers}
-📝 Total Tweets: ${leaderboard.totalTweets}
-💯 Avg Score: ${avgScore.toFixed(1)}
-🚀 Fastest Riser: ${fastestRiser}
-🔥 Most Viral: @${leaderboard.mostViralTweet.username}
-📅 Week: ${getWeekKey()}`;
-
+\n👥 Active Users: ${analytics.totalUsers}\n📝 Total Tweets: ${analytics.totalTweets}\n💯 Avg Score: ${analytics.avgScore}\n🚀 Fastest Riser: ${analytics.fastestRiser ? analytics.fastestRiser.username : 'N/A'}\n🔥 Most Viral: @${analytics.mostViralTweet?.username}\n📅 Week: ${analytics.week}`;
     await telegramBot.sendMessage(msg.chat.id, message);
   } catch (error) {
     console.error('Error in /analytics command:', error);
@@ -599,28 +307,18 @@ telegramBot.onText(/\/analytics/, async (msg) => {
 
 telegramBot.onText(/\/test/, async (msg) => {
   try {
-    const data = storage.load();
+    const leaderboard = await getLeaderboard();
     const testMessage = `🧪 Bot Test Results:
 
 ✅ Bot is running
 ✅ Commands are working
 🕐 Current time: ${new Date().toLocaleString()}
-📁 Data directory: ${CONFIG.DATA_DIR}
-📊 Stored tweets: ${data.tweets.length}
-📈 Stored leaderboards: ${data.leaderboards.length}
+📊 Stored tweets: ${leaderboard?.totalTweets ?? 0}
+📈 Stored leaderboards: ${leaderboard ? 1 : 0}
 🎯 Environment: ${process.env.NODE_ENV || 'development'}`;
-
     await telegramBot.sendMessage(msg.chat.id, testMessage);
   } catch (error) {
     console.error('Error in /test command:', error);
     await telegramBot.sendMessage(msg.chat.id, '❌ Error running test. Please check logs.');
   }
 });
-
-// Export functions for external use
-export { 
-  fetchAllMentionsHistorical, 
-  fetchLatestMentionsLive, 
-  scoreAndStore, 
-  sendLeaderboardToTelegram 
-};
